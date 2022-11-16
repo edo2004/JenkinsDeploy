@@ -9,48 +9,24 @@ pipeline {
     }
 
 
-    environment {
+     environment {
         AWS_ACCESS_KEY_ID     = credentials('AWS_ACCESS_KEY_ID')
         AWS_SECRET_ACCESS_KEY = credentials('AWS_SECRET_ACCESS_KEY')
     }
 
+
     stages {
-        stage ('Actualizacion repo'){
-            steps{
-                script{
-                    cleanWs()
-                    checkout([$class: 'GitSCM',
-                        branches: [[name: "developer"]],
-                        doGenerateSubmoduleConfigurations: false,
-                        extensions: [],
-                        submoduleCfg: [],
-                        userRemoteConfigs: [[credentialsId: "VantiBitbucket", url: "https://bitbucket.org/ed01406/vanti_repository" ]]
-                    ])
-                }
-            }
-        }
-// ------------------------------------
-// -- ETAPA: Checkov
-// ------------------------------------
-        stage('Test') {
+        stage('checkout') {
             steps {
-                script {
-                    try {
-                        sh "checkov --directory /var/lib/jenkins/workspace/grupo_vanti_developer_2/terraform/modules -o junitxml > result.xml || true"
-                        junit "result.xml"
-                        echo "Hola"
-                    } catch (err) {
-                        echo "Hola catch"
-                        if (currentBuild.result == 'UNSTABLE')
-                            currentBuild.result = 'FAILURE'
-                        throw err
+                 script{
+                        dir("terraform")
+                        {
+                            git "https://github.com/edo2004/JenkinsDeploy.git"
+                        }
                     }
                 }
             }
-        }
-// ------------------------------------
-// -- ETAPA: Terraform
-// ------------------------------------
+
         stage('Plan') {
             when {
                 not {
@@ -59,11 +35,11 @@ pipeline {
             }
             
             steps {
-                sh 'cd terraform/modules/${environment}; terraform init -reconfigure'
-                sh 'pwd'
-                sh 'cd terraform/modules/${environment}; terraform plan -input=false -out tfplan'
-                sh 'cd terraform/modules/${environment}; terraform show -no-color tfplan > /var/lib/jenkins/workspace/grupo_vanti_developer_2/tfplan.txt'
+                sh 'terraform init -input=false'
+                sh 'terraform workspace select ${environment} || terraform workspace new ${environment}'
 
+                sh "terraform plan -input=false -out tfplan "
+                sh 'terraform show -no-color tfplan > tfplan.txt'
             }
         }
         stage('Approval') {
@@ -96,7 +72,7 @@ pipeline {
             }
             
             steps {
-                sh 'cd terraform/modules/${environment}; terraform apply -input=false tfplan'
+                sh "terraform apply -input=false tfplan"
             }
         }
         
@@ -106,14 +82,9 @@ pipeline {
             }
         
         steps {
-           sh ('cd terraform/modules/${environment}; terraform destroy --auto-approve')
+           sh "terraform destroy --auto-approve"
         }
     }
-    }
-    options {
-        preserveStashes()
-        timestamps()
-        ansiColor('xterm')
-    }
-}
 
+  }
+}
